@@ -273,3 +273,4 @@ run "Push develop" git push
 style_title "✅ İşlem tamam"
 gum style --foreground 35 --bold "Release branch: $REL_BRANCH"
 gum style --foreground 35 --bold "Yeni sürüm: $NEW_V"
+
