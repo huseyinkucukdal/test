@@ -84,6 +84,26 @@ write_json_version() {
   fi
 }
 
+release_branch_exists() {
+  local v="$1"
+  local r="release/$v"
+
+  # Lokal branch
+  if git show-ref --verify --quiet "refs/heads/$r"; then
+    return 0
+  fi
+  # Remote-tracking branch
+  if git show-ref --verify --quiet "refs/remotes/origin/$r"; then
+    return 0
+  fi
+  # Ek güvence: fetch güncel değilse doğrudan remote'a bak
+  if git ls-remote --exit-code --heads origin "$r" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  return 1
+}
+
 ### ---------- Ön kontroller ----------
 need_cmd git
 need_cmd gum
@@ -152,12 +172,26 @@ gum style "Mevcut versiyon (API): $(gum style --bold $CUR_V_API)"
 gum style "Mevcut versiyon (Auth): $(gum style --bold $CUR_V_AUTH)"
 
 ### ---------- Yeni versiyonu sor ----------
-NEW_V=$(gum input --placeholder "örn: 19.8.5" --value "$CUR_V" --prompt "Yeni versiyonu yaz: ")
-[ -z "$NEW_V" ] && die "Versiyon boş olamaz."
+style_title "Versiyon seç"
 
-if ! [[ "$NEW_V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  die "Geçersiz sürüm formatı. Beklenen: X.Y.Z (örn: 19.8.5)"
-fi
+while true; do
+  NEW_V=$(gum input --placeholder "örn: 19.8.5" --value "$CUR_V" --prompt "Yeni versiyonu yaz: ")
+  [ -z "$NEW_V" ] && die "Versiyon boş olamaz."
+
+  if ! [[ "$NEW_V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    gum style --foreground 214 "Geçersiz sürüm formatı. Beklenen: X.Y.Z (örn: 19.8.5)"
+    continue
+  fi
+
+  if release_branch_exists "$NEW_V"; then
+    gum style --foreground 214 --bold "Hâlihazırda release/$NEW_V var. Yeni numara seç ⚠️"
+    # Son girileni placeholder yaparak tekrar sor
+    CUR_V="$NEW_V"
+    continue
+  fi
+
+  break
+done
 
 gum style --foreground 36 "Yeni versiyon: $(gum style --bold $NEW_V)"
 
@@ -239,3 +273,4 @@ run "Push develop" git push
 style_title "✅ İşlem tamam"
 gum style --foreground 35 --bold "Release branch: $REL_BRANCH"
 gum style --foreground 35 --bold "Yeni sürüm: $NEW_V"
+
