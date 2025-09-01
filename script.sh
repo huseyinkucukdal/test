@@ -219,6 +219,23 @@ fi
 pull_or_internet_hint "master (son push)"
 run "Push master" git push
 
+# --- develop'u master/release ile senkronla ---
+style_title "Develop'i senkronla"
+
+run "Checkout develop" git checkout develop
+pull_or_internet_hint "develop"
+
+# release'i develop'a geri merge et
+if ! gum spin --spinner dot --title "Merge $REL_BRANCH → develop" -- \
+  git merge --no-ff "$REL_BRANCH" -m "Merge $REL_BRANCH back into develop"; then
+  echo
+  gum style --foreground 1 --bold "⚠️  ÇAKIŞMA/HATA ($REL_BRANCH → develop)."
+  gum style "Lütfen çatışmaları çöz (develop'ta), commit et ve işlemi manuel tamamla."
+  exit 1
+fi
+
+run "Push develop" git push
+
 style_title "✅ İşlem tamam"
 gum style --foreground 35 --bold "Release branch: $REL_BRANCH"
 gum style --foreground 35 --bold "Yeni sürüm: $NEW_V"
