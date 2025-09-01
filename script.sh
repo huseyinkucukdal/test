@@ -259,13 +259,24 @@ style_title "Develop'i senkronla"
 run "Checkout develop" git checkout develop
 pull_or_internet_hint "develop"
 
-# release'i develop'a geri merge et
-if ! gum spin --spinner dot --title "Merge $REL_BRANCH → develop" -- \
-  git merge --no-ff "$REL_BRANCH" -m "Merge $REL_BRANCH back into develop"; then
-  echo
-  gum style --foreground 1 --bold "⚠️  ÇAKIŞMA/HATA ($REL_BRANCH → develop)."
-  gum style "Lütfen çatışmaları çöz (develop'ta), commit et ve işlemi manuel tamamla."
-  exit 1
+# --- develop'u master ile senkronla ---
+style_title "Develop'i master ile senkronla"
+
+run "Checkout develop" git checkout develop
+pull_or_internet_hint "develop"
+
+# Önce fast-forward dene; mümkün değilse normal merge'e düş
+if gum spin --spinner dot --title "Fast-forward master → develop" -- git merge --ff-only master; then
+  : # ff oldu, devam
+else
+  gum style --foreground 244 "Fast-forward mümkün değil; normal merge deneniyor."
+  if ! gum spin --spinner dot --title "Merge master → develop" -- \
+       git merge --no-ff master -m "Merge master into develop after release $NEW_V"; then
+    echo
+    gum style --foreground 1 --bold "⚠️  ÇAKIŞMA/HATA (master → develop)."
+    gum style "Lütfen çatışmaları develop'ta çöz, commit et ve sonra push et."
+    exit 1
+  fi
 fi
 
 run "Push develop" git push
