@@ -66,7 +66,6 @@ read_json_version() {
       val="$(grep -oE '"Version"\s*:\s*"[^"]+"' "$file" | head -1 | sed -E 's/.*"Version"\s*:\s*"([^"]+)".*/\1/')"
     fi
   fi
-  echo "$1 icin version kontrolu saglandi"
   echo "$val"
 }
 
