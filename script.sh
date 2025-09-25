@@ -22,6 +22,7 @@ run() {
   if ! gum spin --spinner dot --title "$title" -- "$@"; then
     die "'$title' adımında hata oluştu."
   fi
+  echo $@;
 }
 
 pull_or_internet_hint() {
