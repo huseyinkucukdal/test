@@ -177,7 +177,7 @@ gum style "Mevcut versiyon (Auth): $(gum style --bold $CUR_V_AUTH)"
 style_title "Versiyon seç"
 
 while true; do
-  NEW_V=$(gum input --placeholder "örn: 19.8.5" --value "$CUR_V" --prompt "Yeni versiyonu yaz: ")
+  NEW_V=$(gum input --placeholder "örn: $CUR_V" --value "$CUR_V" --prompt "Yeni versiyonu yaz: ")
   [ -z "$NEW_V" ] && die "Versiyon boş olamaz."
 
   if ! [[ "$NEW_V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
