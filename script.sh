@@ -10,6 +10,7 @@ die() { echo -e "\n$(gum style --foreground 1 --bold "Hata:") $1\n" >&2; exit 1;
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "'$1' yüklü değil. Lütfen kur ve tekrar dene."
+  echo "$1 Yuklu mu diye kontrol edildi"
 }
 
 style_title() {
@@ -22,16 +23,18 @@ run() {
   if ! gum spin --spinner dot --title "$title" -- "$@"; then
     die "'$title' adımında hata oluştu."
   fi
-  echo $@;
+  echo "Calisan komut: $@";
 }
 
 pull_or_internet_hint() {
   # git pull dener; başarısızsa Internet/VPN ipucu gösterir
   local br="$1"
+  echo "Calisan komut: git pull --ff-only"
   if ! gum spin --spinner dot --title "Pull: $br" -- git pull --ff-only; then
     echo -e "\n$(gum style --italic --foreground 1 'No internet? No VPN? 🙄')\n"
     exit 1
   fi
+  echo "Internet ve NPN balantisi var"
 }
 
 ensure_clean_worktree() {
@@ -43,10 +46,12 @@ ensure_clean_worktree() {
       die "Lütfen değişiklikleri commit/stash edip tekrar deneyin."
     fi
   fi
+  echo "Worktree temiz mi kontrol edildi"
 }
 
 git_branch_exists() {
   git rev-parse --verify "$1" >/dev/null 2>&1
+  echo "$1 adinda bir branch var mi kontrol edildi"
 }
 
 read_json_version() {
@@ -61,6 +66,7 @@ read_json_version() {
       val="$(grep -oE '"Version"\s*:\s*"[^"]+"' "$file" | head -1 | sed -E 's/.*"Version"\s*:\s*"([^"]+)".*/\1/')"
     fi
   fi
+  echo "$1 icin version kontrolu saglandi"
   echo "$val"
 }
 
@@ -83,12 +89,15 @@ write_json_version() {
       die "$file içinde 'Version' anahtarı bulunamadı."
     fi
   fi
+
+  echo "$1 dosyasina $2 versionu yazildi"
 }
 
 release_branch_exists() {
   local v="$1"
   local r="release/$v"
 
+  echo "hali hazirda bu release branchi mevcut mu kontrol ediliyor"
   # Lokal branch
   if git show-ref --verify --quiet "refs/heads/$r"; then
     return 0
@@ -194,11 +203,11 @@ style_title "Versiyon güncelle (develop)"
 
 run "Checkout develop" git checkout develop
 
-write_json_version "$API_FILE"  "$NEW_V"
+write_json_version "$API_FILE" "$NEW_V"
 write_json_version "$AUTH_FILE" "$NEW_V"
 
 # Değişiklikleri ekle/commit/push
-run "Stage changes" git add "$API_FILE" "$AUTH_FILE"
+run "Stage changes" git add .
 
 if git diff --cached --quiet; then
   gum style --foreground 244 "Değişiklik yok, commit atlanıyor."
