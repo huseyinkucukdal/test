@@ -29,12 +29,12 @@ run() {
 pull_or_internet_hint() {
   # git pull dener; başarısızsa Internet/VPN ipucu gösterir
   local br="$1"
+  echo "Internet ve NPN balantisi varmi kontrol ediliyor"
   echo "Calisan komut: git pull --ff-only"
   if ! gum spin --spinner dot --title "Pull: $br" -- git pull --ff-only; then
     echo -e "\n$(gum style --italic --foreground 1 'No internet? No VPN? 🙄')\n"
     exit 1
   fi
-  echo "Internet ve NPN balantisi var"
 }
 
 ensure_clean_worktree() {
