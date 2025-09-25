@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # wp-release.sh
-# WP Backend için sürüm yükseltme + release akışı (gum ile görsellikli)
-# Çalıştırmadan önce: 'gum' kurulu olmalı. 'jq' yoksa sed fallback kullanılır.
+# WP Backend release assistant (with gum)
+# Prereqs: 'gum' installed. If 'jq' is missing, sed/grep fallback is used.
 
 set -o pipefail
 
-### ---------- Yardımcılar ----------
-die() { echo -e "\n$(gum style --foreground 1 --bold "Hata:") $1\n" >&2; exit 1; }
+### ---------- Helpers ----------
+die() { echo -e "\n$(gum style --foreground 1 --bold "Error:") $1\n" >&2; exit 1; }
 
 need_cmd() {
-  command -v "$1" >/dev/null 2>&1 || die "'$1' yüklü değil. Lütfen kur ve tekrar dene."
-  echo "$1 Yuklu mu diye kontrol edildi"
+  command -v "$1" >/dev/null 2>&1 || die "'$1' is not installed. Please install it and try again."
+  echo "Checked: '$1' is installed"
 }
 
 style_title() {
@@ -18,40 +18,40 @@ style_title() {
 }
 
 run() {
-  # gum spin ile komut çalıştır ve hatada net mesaj ver
+  # Run a command with gum spinner; fail with a clear message
   local title="$1"; shift
   if ! gum spin --spinner dot --title "$title" -- "$@"; then
-    die "'$title' adımında hata oluştu."
+    die "Failed at step: '$title'."
   fi
-  echo "Calisan komut: $@";
+  echo "Running: $@"
 }
 
 pull_or_internet_hint() {
-  # git pull dener; başarısızsa Internet/VPN ipucu gösterir
+  # Try git pull; on failure, hint about Internet/VPN
   local br="$1"
-  echo "Internet ve NPN balantisi varmi kontrol ediliyor"
-  echo "Calisan komut: git pull --ff-only"
+  echo "Checking Internet/VPN connectivity"
+  echo "Running: git pull --ff-only"
   if ! gum spin --spinner dot --title "Pull: $br" -- git pull --ff-only; then
-    echo -e "\n$(gum style --italic --foreground 1 'No internet? No VPN? 🙄')\n"
+    echo -e "\n$(gum style --italic --foreground 1 'No internet or VPN? 🙄')\n"
     exit 1
   fi
 }
 
 ensure_clean_worktree() {
   if ! git diff-index --quiet HEAD --; then
-    gum style --foreground 214 "Çalışma dizininde commit'lenmemiş değişiklikler var."
-    if gum confirm "Değişiklikleri geçici olarak stash'leyelim mi?"; then
+    gum style --foreground 214 "You have uncommitted changes in the working tree."
+    if gum confirm "Stash changes temporarily?"; then
       run "Stash" git stash push -u -m "auto-stash by wp-release.sh"
     else
-      die "Lütfen değişiklikleri commit/stash edip tekrar deneyin."
+      die "Please commit/stash your changes and retry."
     fi
   fi
-  echo "Worktree temiz mi kontrol edildi"
+  echo "Verified clean worktree"
 }
 
 git_branch_exists() {
   git rev-parse --verify "$1" >/dev/null 2>&1
-  echo "$1 adinda bir branch var mi kontrol edildi"
+  echo "Checked if branch exists: $1"
 }
 
 read_json_version() {
@@ -62,7 +62,7 @@ read_json_version() {
       val="$(jq -r '.Version // empty' "$file")"
     fi
     if [ -z "$val" ]; then
-      # jq yoksa veya alan boşsa sed/grep ile çıkar
+      # fallback via sed/grep
       val="$(grep -oE '"Version"\s*:\s*"[^"]+"' "$file" | head -1 | sed -E 's/.*"Version"\s*:\s*"([^"]+)".*/\1/')"
     fi
   fi
@@ -73,39 +73,39 @@ write_json_version() {
   local file="$1"
   local newv="$2"
 
-  [ -f "$file" ] || die "Dosya bulunamadı: $file"
+  [ -f "$file" ] || die "File not found: $file"
 
   if command -v jq >/dev/null 2>&1; then
     local tmp; tmp="$(mktemp)"
-    jq --arg v "$newv" '.Version = $v' "$file" > "$tmp" || die "$file güncellenemedi (jq)."
+    jq --arg v "$newv" '.Version = $v' "$file" > "$tmp" || die "Failed to update $file (jq)."
     mv "$tmp" "$file"
   else
-    # jq yoksa: sed ile "Version": "..." alanını değiştir
+    # sed fallback (BSD/macOS compatible -i'')
     if grep -q '"Version"\s*:' "$file"; then
-      # macOS/BSD sed ile uyum: -i'' dilimsiz backup
-      sed -E -i'' 's/"Version"\s*:\s*"[^"]*"/"Version": "'"$newv"'"/' "$file" || die "$file güncellenemedi (sed)."
+      sed -E -i'' 's/"Version"\s*:\s*"[^"]*"/"Version": "'"$newv"'"/' "$file" || die "Failed to update $file (sed)."
     else
-      die "$file içinde 'Version' anahtarı bulunamadı."
+      die "'Version' key not found in $file."
     fi
   fi
 
-  echo "$1 dosyasina $2 versionu yazildi"
+  echo "Wrote version $2 to $1"
 }
 
 release_branch_exists() {
+  # Check if release/<version> exists locally OR on origin (remote)
   local v="$1"
   local r="release/$v"
 
-  echo "hali hazirda bu release branchi mevcut mu kontrol ediliyor"
-  # Lokal branch
+  echo "Checking if release branch already exists: $r"
+  # local branch
   if git show-ref --verify --quiet "refs/heads/$r"; then
     return 0
   fi
-  # Remote-tracking branch
+  # remote-tracking branch
   if git show-ref --verify --quiet "refs/remotes/origin/$r"; then
     return 0
   fi
-  # Ek güvence: fetch güncel değilse doğrudan remote'a bak
+  # ensure remote check even if fetch is stale
   if git ls-remote --exit-code --heads origin "$r" >/dev/null 2>&1; then
     return 0
   fi
@@ -113,30 +113,30 @@ release_branch_exists() {
   return 1
 }
 
-### ---------- Ön kontroller ----------
+### ---------- Pre-flight ----------
 need_cmd git
 need_cmd gum
 
-[ -d .git ] || die "Bu script'i repo kökünde çalıştırmalısın ('.git' bulunamadı)."
+[ -d .git ] || die "You must run this script at the repo root ('.git' not found)."
 
-style_title "WP Release Asistanı"
+style_title "WP Release Assistant"
 
-### ---------- Repo seçimi ----------
-CHOICE=$(gum choose --header "Hangi repo?" "WP Backend" "WP Frontend")
-[ -z "$CHOICE" ] && die "Bir seçim yapmalısın."
+### ---------- Repo choice ----------
+CHOICE=$(gum choose --header "Which repo?" "WP Backend" "WP Frontend")
+[ -z "$CHOICE" ] && die "You must make a selection."
 
 if [ "$CHOICE" = "WP Frontend" ]; then
-  gum style --foreground 212 "Frontend akışını sonra ekleyeceğiz. Şimdilik çıkıyorum. 👋"
+  gum style --foreground 212 "Frontend flow will be added later. Exiting for now. 👋"
   exit 0
 fi
 
-### ---------- Backend akışı ----------
-style_title "Backend: ön hazırlık"
+### ---------- Backend flow ----------
+style_title "Backend: preparation"
 
-# Varsa otomatik stash
+# Auto-stash if needed
 ensure_clean_worktree
 
-# Remote'ları al
+# Fetch remotes
 run "Git fetch" git fetch --all
 
 # master pull
@@ -144,7 +144,7 @@ if git_branch_exists master; then
   run "Checkout master" git checkout master
   pull_or_internet_hint "master"
 else
-  die "Branch bulunamadı: master"
+  die "Branch not found: master"
 fi
 
 # develop pull
@@ -152,71 +152,70 @@ if git_branch_exists develop; then
   run "Checkout develop" git checkout develop
   pull_or_internet_hint "develop"
 else
-  die "Branch bulunamadı: develop"
+  die "Branch not found: develop"
 fi
 
-### ---------- Mevcut versiyonu oku ----------
+### ---------- Read current version ----------
 API_FILE="./MyFolder1/appsettings.json"
 AUTH_FILE="./MyFolder2/appsettings.json"
 
-[ -f "$API_FILE" ] || die "Dosya yok: $API_FILE"
-[ -f "$AUTH_FILE" ] || die "Dosya yok: $AUTH_FILE"
+[ -f "$API_FILE" ] || die "Missing file: $API_FILE"
+[ -f "$AUTH_FILE" ] || die "Missing file: $AUTH_FILE"
 
 CUR_V_API=$(read_json_version "$API_FILE")
 CUR_V_AUTH=$(read_json_version "$AUTH_FILE")
 
 CUR_V="$CUR_V_API"
 [ -z "$CUR_V" ] && CUR_V="$CUR_V_AUTH"
-
 [ -z "$CUR_V" ] && CUR_V="0.0.0"
 
-gum style "Mevcut versiyon (API): $(gum style --bold $CUR_V_API)"
-gum style "Mevcut versiyon (Auth): $(gum style --bold $CUR_V_AUTH)"
+gum style "Current version (API): $(gum style --bold $CUR_V_API)"
+gum style "Current version (Auth): $(gum style --bold $CUR_V_AUTH)"
 
-### ---------- Yeni versiyonu sor ----------
-style_title "Versiyon seç"
+### ---------- Ask for new version ----------
+style_title "Choose new version"
 
 while true; do
-  NEW_V=$(gum input --placeholder "örn: $CUR_V" --value "$CUR_V" --prompt "Yeni versiyonu yaz: ")
-  [ -z "$NEW_V" ] && die "Versiyon boş olamaz."
+  NEW_V=$(gum input --placeholder "e.g. $CUR_V" --value "$CUR_V" --prompt "Enter new version: ")
+  [ -z "$NEW_V" ] && die "Version cannot be empty."
 
   if ! [[ "$NEW_V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    gum style --foreground 214 "Geçersiz sürüm formatı. Beklenen: X.Y.Z (örn: 19.8.5)"
+    gum style --foreground 214 "Invalid semver format. Expected: X.Y.Z (e.g., 19.8.5)"
     continue
   fi
 
+  # Block using an existing release branch (local or origin)
   if release_branch_exists "$NEW_V"; then
-    gum style --foreground 214 --bold "Hâlihazırda release/$NEW_V var. Yeni numara seç ⚠️"
-    # Son girileni placeholder yaparak tekrar sor
-    CUR_V="$NEW_V"
+    gum style --foreground 214 --bold "release/$NEW_V already exists (local or origin). Please choose a DIFFERENT version. ⚠️"
+    CUR_V="$NEW_V"   # use the last input as placeholder for convenience
     continue
   fi
 
   break
 done
 
-gum style --foreground 36 "Yeni versiyon: $(gum style --bold $NEW_V)"
+gum style --foreground 36 "New version: $(gum style --bold $NEW_V)"
 
-### ---------- Versiyonu develop'ta güncelle ----------
-style_title "Versiyon güncelle (develop)"
+### ---------- Update version on develop ----------
+style_title "Update version (develop)"
 
 run "Checkout develop" git checkout develop
 
 write_json_version "$API_FILE" "$NEW_V"
 write_json_version "$AUTH_FILE" "$NEW_V"
 
-# Değişiklikleri ekle/commit/push
+# Stage/commit/push changes
 run "Stage changes" git add .
 
 if git diff --cached --quiet; then
-  gum style --foreground 244 "Değişiklik yok, commit atlanıyor."
+  gum style --foreground 244 "No changes detected, skipping commit."
 else
   run "Commit" git commit -m "update version to $NEW_V"
   run "Push develop" git push
 fi
 
-### ---------- release/<versiyon> oluştur ----------
-style_title "Release oluştur ve birleştir"
+### ---------- Create release/<version> ----------
+style_title "Create and merge release"
 
 run "Checkout master" git checkout master
 pull_or_internet_hint "master"
@@ -224,37 +223,36 @@ pull_or_internet_hint "master"
 REL_BRANCH="release/$NEW_V"
 
 if git_branch_exists "$REL_BRANCH"; then
-  gum style --foreground 214 "Branch zaten var: $REL_BRANCH — ona geçiyorum."
+  gum style --foreground 214 "Branch already exists: $REL_BRANCH — switching to it."
   run "Checkout $REL_BRANCH" git checkout "$REL_BRANCH"
 else
   run "Create $REL_BRANCH" git checkout -b "$REL_BRANCH" master
 fi
 
-# develop'ı release'e merge et
+# Merge develop into release
 if ! gum spin --spinner dot --title "Merge develop → $REL_BRANCH" -- git merge --no-ff develop -m "Merge develop into $REL_BRANCH"; then
   echo
-  gum style --foreground 1 --bold "⚠️  ÇAKIŞMA OLUŞTU (develop → $REL_BRANCH)."
-  gum style "Lütfen çatışmaları çöz, commit et ve işlemi manuel sürdür."
+  gum style --foreground 1 --bold "⚠️  CONFLICT (develop → $REL_BRANCH)."
+  gum style "Please resolve conflicts, commit, and continue manually."
   exit 1
 fi
 
-# release branch push
+# Push release branch
 run "Push $REL_BRANCH" git push --set-upstream origin "$REL_BRANCH"
 
-# release'i master'a merge et
+# Merge release into master
 run "Checkout master" git checkout master
 
 if ! gum spin --spinner dot --title "Merge $REL_BRANCH → master" -- git merge --no-ff "$REL_BRANCH" -m "Merge $REL_BRANCH into master"; then
   echo
-  gum style --foreground 1 --bold "⚠️  ÇAKIŞMA/HATA ( $REL_BRANCH → master )."
-  gum style "Hata çıktı. Lütfen problemi çöz ve işlemi manuel tamamla."
+  gum style --foreground 1 --bold "⚠️  CONFLICT/ERROR ( $REL_BRANCH → master )."
+  gum style "Please fix the issue and finish manually."
   exit 1
 fi
 
-# master push
+# Push master
 run "Push master" git push
 
-style_title "✅ İşlem tamam"
+style_title "✅ Done"
 gum style --foreground 35 --bold "Release branch: $REL_BRANCH"
-gum style --foreground 35 --bold "Yeni sürüm: $NEW_V"
-
+gum style --foreground 35 --bold "New version: $NEW_V"
