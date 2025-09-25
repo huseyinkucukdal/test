@@ -28,7 +28,7 @@ pull_or_internet_hint() {
   # git pull dener; başarısızsa Internet/VPN ipucu gösterir
   local br="$1"
   if ! gum spin --spinner dot --title "Pull: $br" -- git pull --ff-only; then
-    echo -e "\n$(gum style --italic --foreground 1 'Internet? VPN? 🙄')\n"
+    echo -e "\n$(gum style --italic --foreground 1 'No internet? No VPN? 🙄')\n"
     exit 1
   fi
 }
@@ -128,7 +128,7 @@ style_title "Backend: ön hazırlık"
 ensure_clean_worktree
 
 # Remote'ları al
-run "Git fetch" git fetch --all --prune
+run "Git fetch" git fetch --all
 
 # master pull
 if git_branch_exists master; then
@@ -149,13 +149,6 @@ fi
 ### ---------- Mevcut versiyonu oku ----------
 API_FILE="./MyFolder1/appsettings.json"
 AUTH_FILE="./MyFolder2/appsettings.json"
-
-# Kullanıcının yazdığı path'teki olası yazım hatalarını tolere etmeye çalış:
-if [ ! -f "$AUTH_FILE" ]; then
-  # bazen yanlışlıkla başında nokta yazılıyor ya da 'jon' yazılıyor olabilir
-  [ -f ".MyFolder1/appsettings.json" ] && AUTH_FILE=".MyFolder2/appsettings.json"
-  [ -f "./MyFolder1/appsettings.jon" ] && AUTH_FILE="./MyFolder2/appsettings.jon"
-fi
 
 [ -f "$API_FILE" ] || die "Dosya yok: $API_FILE"
 [ -f "$AUTH_FILE" ] || die "Dosya yok: $AUTH_FILE"
@@ -237,7 +230,7 @@ if ! gum spin --spinner dot --title "Merge develop → $REL_BRANCH" -- git merge
 fi
 
 # release branch push
-run "Push $REL_BRANCH" git push -u origin "$REL_BRANCH"
+run "Push $REL_BRANCH" git push --set-upstream origin "$REL_BRANCH"
 
 # release'i master'a merge et
 run "Checkout master" git checkout master
@@ -250,36 +243,7 @@ if ! gum spin --spinner dot --title "Merge $REL_BRANCH → master" -- git merge 
 fi
 
 # master push
-pull_or_internet_hint "master (son push)"
 run "Push master" git push
-
-# --- develop'u master/release ile senkronla ---
-style_title "Develop'i senkronla"
-
-run "Checkout develop" git checkout develop
-pull_or_internet_hint "develop"
-
-# --- develop'u master ile senkronla ---
-style_title "Develop'i master ile senkronla"
-
-run "Checkout develop" git checkout develop
-pull_or_internet_hint "develop"
-
-# Önce fast-forward dene; mümkün değilse normal merge'e düş
-if gum spin --spinner dot --title "Fast-forward master → develop" -- git merge --ff-only master; then
-  : # ff oldu, devam
-else
-  gum style --foreground 244 "Fast-forward mümkün değil; normal merge deneniyor."
-  if ! gum spin --spinner dot --title "Merge master → develop" -- \
-       git merge --no-ff master -m "Merge master into develop after release $NEW_V"; then
-    echo
-    gum style --foreground 1 --bold "⚠️  ÇAKIŞMA/HATA (master → develop)."
-    gum style "Lütfen çatışmaları develop'ta çöz, commit et ve sonra push et."
-    exit 1
-  fi
-fi
-
-run "Push develop" git push
 
 style_title "✅ İşlem tamam"
 gum style --foreground 35 --bold "Release branch: $REL_BRANCH"
