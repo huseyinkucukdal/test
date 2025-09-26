@@ -49,9 +49,13 @@ ensure_clean_worktree() {
   echo "Verified clean worktree"
 }
 
-git_branch_exists() {
-  git rev-parse --verify "$1" >/dev/null 2>&1
-  echo "Checked if branch exists: $1"
+branch_exists_local()  { 
+  echo "check if local branch $1 exists"
+  git show-ref --verify --quiet "refs/heads/$1"; 
+}
+branch_exists_remote() { 
+  echo "check if remote branch $1 exists"
+  git ls-remote --exit-code --heads origin "$1" >/dev/null 2>&1; 
 }
 
 read_json_version() {
@@ -140,7 +144,7 @@ ensure_clean_worktree
 run "Git fetch" git fetch --all
 
 # master pull
-if git_branch_exists master; then
+if branch_exists_local master; then
   run "Checkout master" git checkout master
   pull_or_internet_hint "master"
 else
@@ -148,7 +152,7 @@ else
 fi
 
 # develop pull
-if git_branch_exists develop; then
+if branch_exists_local develop; then
   run "Checkout develop" git checkout develop
   pull_or_internet_hint "develop"
 else
@@ -222,7 +226,7 @@ pull_or_internet_hint "master"
 
 REL_BRANCH="release/$NEW_V"
 
-if git_branch_exists "$REL_BRANCH"; then
+if branch_exists_local "$REL_BRANCH"; then
   gum style --foreground 214 "Branch already exists: $REL_BRANCH — switching to it."
   run "Checkout $REL_BRANCH" git checkout "$REL_BRANCH"
 else
