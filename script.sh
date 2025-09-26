@@ -435,10 +435,13 @@ ui_hr
 CHOICE=$(gum choose --header "Which repo?" "WP Backend" "WP Frontend")
 [ -z "$CHOICE" ] && die "You must make a selection."
 
+MODE = "backend"
+
 if [ "$CHOICE" = "WP Frontend" ]; then
-  gum style --foreground 212 "Frontend flow will be added later. Exiting for now. 👋"
-  exit 0
+  MODE = "frontend"
 fi
+
+ui_note "Selected mode: $MODE"
 
 ### ---------- Backend flow ----------
 style_title "Backend: preparation"
@@ -511,21 +514,25 @@ ui_hr
 
 
 ### ---------- Update version on develop ----------
-style_title "Update version (develop)"
+if [ "$MODE" = "backend" ]; then
 
-run "Checkout develop" git checkout develop
+  style_title "Update version (develop)"
 
-write_json_version "$API_FILE" "$NEW_V"
-write_json_version "$AUTH_FILE" "$NEW_V"
+  run "Checkout develop" git checkout develop
 
-# Stage/commit/push changes
-run "Stage changes" git add .
+  write_json_version "$API_FILE" "$NEW_V"
+  write_json_version "$AUTH_FILE" "$NEW_V"
 
-if git diff --cached --quiet; then
-  gum style --foreground 244 "No changes detected, skipping commit."
-else
-  run "Commit" git commit -m "update version to $NEW_V"
-  run "Push develop" git push
+  # Stage/commit/push changes
+  run "Stage changes" git add .
+
+  if git diff --cached --quiet; then
+    gum style --foreground 244 "No changes detected, skipping commit."
+  else
+    run "Commit" git commit -m "update version to $NEW_V"
+    run "Push develop" git push
+  fi
+
 fi
 
 ### ---------- Create release/<version> ----------
