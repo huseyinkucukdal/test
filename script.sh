@@ -13,6 +13,19 @@ need_cmd() {
   echo "Checked: '$1' is installed"
 }
 
+# --- DIR HELPERS (cd alt-proses değil, gerçek shell'de) ---
+enter_dir() {
+  local dir="$1"
+  [ -d "$dir" ] || die "Directory not found: $dir"
+  cd "$dir" || die "cd failed: $dir"
+  ui_success "Entered: $dir"
+}
+
+SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASE_DIR="$SCRIPT_DIR"
+BACKEND_DIR="$BASE_DIR/portal-backend"
+FRONTEND_DIR="$BASE_DIR/portal-frontend"
+
 ### ---------- UI / Theme ----------
 # Renk paleti (Gum 256-color)
 CLR_PRIMARY=212      # Pembe-lila (başlık)
@@ -98,7 +111,7 @@ celebrate_2s() {
 
   local cols rows cx cy; cols=$(tput cols 2>/dev/null || echo 80); rows=$(tput lines 2>/dev/null || echo 24)
   cx=$(( cols / 2 )); cy=$(( rows / 2 ))
-  local msg="$1 RELEASE COMPLETED"
+  local msg="RELEASE #$1 COMPLETED"
   local width=$(( ${#msg} + 4 ))
   local left=$(( (cols - width - 2) / 2 )); [ $left -lt 1 ] && left=1
   local top=$(( cy - 1 ))
@@ -341,7 +354,8 @@ ensure_clean_worktree() {
   if ! git diff-index --quiet HEAD --; then
     ui_warn "You have uncommitted changes in the working tree."
     if gum confirm "Stash changes temporarily?"; then
-      run "Stash" git stash push -u -m "auto-stash by wp-release.sh"
+      # run "Stash" git stash push -u -m "auto-stash by wp_release_assistant.sh"
+      echo "skip 1"
     else
       ui_error "Please commit/stash your changes and retry."
       exit 1
@@ -368,8 +382,9 @@ read_json_version() {
       val="$(jq -r '.Version // empty' "$file")"
     fi
     if [ -z "$val" ]; then
-      # fallback via sed/grep
-      val="$(grep -oE '"Version"\s*:\s*"[^"]+"' "$file" | head -1 | sed -E 's/.*"Version"\s*:\s*"([^"]+)".*/\1/')"
+      val="$(grep -oE '"Version"[[:space:]]*:[[:space:]]*"[^"]+"' "$file" \
+            | head -1 \
+            | sed -E 's/.*"Version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')"
     fi
   fi
   echo "$val"
@@ -378,24 +393,48 @@ read_json_version() {
 write_json_version() {
   local file="$1"
   local newv="$2"
-
   [ -f "$file" ] || die "File not found: $file"
 
+  # 1) Önce jq ile dene
   if command -v jq >/dev/null 2>&1; then
     local tmp; tmp="$(mktemp)"
-    jq --arg v "$newv" '.Version = $v' "$file" > "$tmp" || die "Failed to update $file (jq)."
-    mv "$tmp" "$file"
-  else
-    # sed fallback (BSD/macOS compatible -i'')
-    if grep -q '"Version"\s*:' "$file"; then
-      sed -E -i'' 's/"Version"\s*:\s*"[^"]*"/"Version": "'"$newv"'"/' "$file" || die "Failed to update $file (sed)."
+    if jq --arg v "$newv" '.Version = $v' "$file" > "$tmp" 2>/dev/null; then
+      mv "$tmp" "$file"
+      echo "Set version $2 to $1 (via jq)"
+      return 0
     else
-      die "'Version' key not found in $file."
+      rm -f "$tmp"
+      ui_warn "jq failed to parse $file — falling back to awk."
     fi
   fi
 
-  echo "Set version $2 to $1"
+  # 2) awk fallback (BSD/macOS uyumlu): İlk görülen Version alanını değiştir ve "X.Y.Z" olarak normalize et
+  local tmp; tmp="$(mktemp)"
+  if awk -v NEWV="$newv" '
+      BEGIN{
+        # "Version": "7.9.5"  VEYA  "Version": 7.9.5  eşleşsin
+        re = "\"Version\"[[:space:]]*:[[:space:]]*(\"[^\"]*\"|[0-9]+(\\.[0-9]+){2})"
+        done = 0
+      }
+      {
+        if (!done && $0 ~ re) {
+          gsub(re, "\"Version\": \"" NEWV "\"")
+          done = 1
+        }
+        print
+      }
+      END{
+        if (!done) exit 2  # Version anahtarı bulunamadı
+      }
+    ' "$file" > "$tmp"; then
+    mv "$tmp" "$file"
+    echo "Set version $2 to $1 (via awk fallback)"
+  else
+    rm -f "$tmp"
+    die "Failed to update $file (awk). 'Version' key not found or file is too malformed."
+  fi
 }
+
 
 release_branch_exists() {
   # Check if release/<version> exists locally OR on origin (remote)
@@ -419,13 +458,22 @@ release_branch_exists() {
   return 1
 }
 
+build_backend_or_fail() {
+  style_title "Backend: build verification (Release)"
+  need_cmd dotnet
+  run "dotnet restore" dotnet restore
+  run "Build Work.API" dotnet build $BACKEND_DIR/Afiniti.Work.API/Afiniti.Work.API.csproj -c Releease /consoleloggerparameters:NoSummary /p:GenerateFullPaths=true
+  run "Build AuthAPI" dotnet build $BACKEND_DIR/Afiniti.Work.AuthAPI/Afiniti.Work.AuthAPI.csproj -c Release /consoleloggerparameters:NoSummary /p:GenerateFullPaths=true
+  ui_success "Backend build passed"
+}
+
 ### ---------- Pre-flight ----------
 need_cmd git
 need_cmd gum
 
 ROOT_DIR="$(pwd)"
-[ -d "./portal-backend/.git" ]  || die "Missing repo: portal-backend (expected sibling folder)"
-[ -d "./portal-frontend/.git" ] || die "Missing repo: portal-frontend (expected sibling folder)"
+[ -d "$BACKEND_DIR/.git" ]  || die "Missing repo: $BACKEND_DIR (expected sibling folder)"
+[ -d "$FRONTEND_DIR/.git" ] || die "Missing repo: $FRONTEND_DIR (expected sibling folder)"
 
 # style_title "WP Release Assistant"
 # ui_banner "WP Release Assistant"
@@ -449,16 +497,16 @@ ui_note "Selected mode: $MODE"
 style_title "$MODE: preparation"
 
 if [ "$MODE" = "backend" ]; then
-  run "Go to backend folder" "cd portal-backend"
+  enter_dir "$BACKEND_DIR"
 fi
 
 if [ "$MODE" = "frontend" ]; then
-  run "Go to backend folder to learn current version" "cd portal-backend"
+  enter_dir "$BACKEND_DIR"
 fi
 
 ### ---------- Read current version ----------
-API_FILE="./MyFolder1/appsettings.json"
-AUTH_FILE="./MyFolder2/appsettings.json"
+API_FILE="$BACKEND_DIR/Afiniti.Work.API/appsettings.json"
+AUTH_FILE="$BACKEND_DIR/Afiniti.Work.AuthAPI/appsettings.json"
 
 [ -f "$API_FILE" ] || die "Missing file: $API_FILE"
 [ -f "$AUTH_FILE" ] || die "Missing file: $AUTH_FILE"
@@ -474,7 +522,7 @@ gum style "Current version (API): $(gum style --bold $CUR_V_API)"
 gum style "Current version (Auth): $(gum style --bold $CUR_V_AUTH)"
 
 if [ "$MODE" = "frontend" ]; then
-  run "Version number is learnt! It is $CUR_V. Now, go to frontend folder" "cd ../portal-frontend"
+  enter_dir "$FRONTEND_DIR"
 fi
 
 # Auto-stash if needed
@@ -486,7 +534,7 @@ run "Git fetch" git fetch --all
 # master pull
 if branch_exists_local master; then
   run "Checkout master" git checkout master
-  ensure_synced_or_push "master" 
+  # ensure_synced_or_push "master" 
   pull_or_internet_hint "master"
 else
   die "Branch not found: master"
@@ -495,7 +543,7 @@ fi
 # develop pull
 if branch_exists_local develop; then
   run "Checkout develop" git checkout develop
-  ensure_synced_or_push "develop"
+  # ensure_synced_or_push "develop"
   pull_or_internet_hint "develop"
 else
   die "Branch not found: develop"
@@ -529,7 +577,7 @@ ui_hr
 
 ### ---------- Update version on develop ----------
 if [ "$MODE" = "backend" ]; then
-
+  enter_dir "$BACKEND_DIR"
   style_title "Update version (develop)"
 
   run "Checkout develop" git checkout develop
@@ -544,7 +592,7 @@ if [ "$MODE" = "backend" ]; then
     gum style --foreground 244 "No changes detected, skipping commit."
   else
     run "Commit" git commit -m "update version to $NEW_V"
-    run "Push develop" git push
+    # run "Push develop" git push
   fi
 
 fi
@@ -573,7 +621,7 @@ if ! gum spin --spinner dot --title "Merge develop → $REL_BRANCH" -- git merge
 fi
 
 # Push release branch
-run "Push $REL_BRANCH" git push --set-upstream origin "$REL_BRANCH"
+# run "Push $REL_BRANCH" git push --set-upstream origin "$REL_BRANCH"
 
 # Merge release into master
 run "Checkout master" git checkout master
@@ -586,7 +634,14 @@ if ! gum spin --spinner dot --title "Merge $REL_BRANCH → master" -- git merge 
 fi
 
 # Push master
-run "Push master" git push
+if [ "$MODE" = "backend" ]; then
+  enter_dir "$BACKEND_DIR"
+  if ! build_backend_or_fail; then
+    ui_error "Build failed — master push is blocked."
+    exit 1
+  fi
+fi
+# run "Push master" git push
 
 celebrate_2s $NEW_V
 
