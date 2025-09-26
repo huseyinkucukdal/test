@@ -26,6 +26,54 @@ run() {
   echo "Running: $@"
 }
 
+branch_has_upstream() {
+  local br="$1"
+  git rev-parse --abbrev-ref --symbolic-full-name "$br@{u}" >/dev/null 2>&1
+}
+
+branch_ahead_count() {
+  local br="$1"
+  # @{u}...BR: left=behind, right=ahead
+  local out
+  out="$(git rev-list --left-right --count "$br@{u}"..."$br" 2>/dev/null || echo "0	0")"
+  echo "${out#*	}"
+}
+
+ensure_synced_or_push() {
+  # Bulunduğun dal için push'lanmamış commit var mı kontrol eder.
+  # Upstream yoksa kurmayı ve push’lamayı teklif eder.
+  local br="$1"
+  local cur
+  cur="$(git rev-parse --abbrev-ref HEAD)"
+
+  if [ "$cur" != "$br" ]; then
+    die "Internal: ensure_synced_or_push must be called while on '$br' (current: '$cur')."
+  fi
+
+  if ! branch_has_upstream "$br"; then
+    gum style --foreground 214 "Branch '$br' has no upstream set."
+    if gum confirm "Set upstream and push '$br' to origin?"; then
+      run "Push '$br' (set upstream)" git push -u origin "$br"
+    else
+      die "Upstream not set. Cannot continue safely."
+    fi
+  else
+    local ahead
+    ahead="$(branch_ahead_count "$br")"
+    if [ "${ahead:-0}" -gt 0 ]; then
+      gum style --foreground 214 --bold "Branch '$br' has $ahead unpushed commit(s)."
+
+      git log --oneline "$br@{u}..$br" | sed 's/^/  • /'
+      echo
+      if gum confirm "Push '$br' to origin now?"; then
+        run "Push '$br'" git push
+      else
+        die "Unpushed commits on '$br'. Aborting."
+      fi
+    fi
+  fi
+}
+
 pull_or_internet_hint() {
   # Try git pull; on failure, hint about Internet/VPN
   local br="$1"
@@ -146,6 +194,7 @@ run "Git fetch" git fetch --all
 # master pull
 if branch_exists_local master; then
   run "Checkout master" git checkout master
+  ensure_synced_or_push "master" 
   pull_or_internet_hint "master"
 else
   die "Branch not found: master"
@@ -154,6 +203,7 @@ fi
 # develop pull
 if branch_exists_local develop; then
   run "Checkout develop" git checkout develop
+  ensure_synced_or_push "develop"
   pull_or_internet_hint "develop"
 else
   die "Branch not found: develop"
