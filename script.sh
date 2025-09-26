@@ -662,6 +662,12 @@ gum join \
   "$(gum style --border normal --padding '0 2' --border-foreground $CLR_OK "Release branch: $(gum style --bold $REL_BRANCH)")" \
   "$(gum style --border normal --padding '0 2' --border-foreground $CLR_PRIMARY "New version: $(gum style --bold $NEW_V)")"
 
-ui_note "Tip: Check Jenkins: https://jenkins.afiniti.com/job/Engr_Portal_Backend_Service"
+if [ "$MODE" = "backend" ]; then
+  ui_note "Tip: Check Jenkins: https://jenkins.afiniti.com/job/Engr_Portal_Backend_Service"
+fi
+
+if [ "$MODE" = "frontend" ]; then
+  ui_note "Tip: Check Jenkins: https://jenkins.afiniti.com/job/Engr_Portal_Frontend_Service"
+fi
 ui_hr
 
