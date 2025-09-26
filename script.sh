@@ -423,7 +423,9 @@ release_branch_exists() {
 need_cmd git
 need_cmd gum
 
-[ -d .git ] || die "You must run this script at the repo root ('.git' not found)."
+ROOT_DIR="$(pwd)"
+[ -d "./portal-backend/.git" ]  || die "Missing repo: portal-backend (expected sibling folder)"
+[ -d "./portal-frontend/.git" ] || die "Missing repo: portal-frontend (expected sibling folder)"
 
 # style_title "WP Release Assistant"
 # ui_banner "WP Release Assistant"
@@ -443,8 +445,37 @@ fi
 
 ui_note "Selected mode: $MODE"
 
-### ---------- Backend flow ----------
-style_title "Backend: preparation"
+### ----------------------------
+style_title "$MODE: preparation"
+
+if [ "$MODE" = "backend" ]; then
+  run "Go to backend folder" "cd portal-backend"
+fi
+
+if [ "$MODE" = "frontend" ]; then
+  run "Go to backend folder to learn current version" "cd portal-backend"
+fi
+
+### ---------- Read current version ----------
+API_FILE="./MyFolder1/appsettings.json"
+AUTH_FILE="./MyFolder2/appsettings.json"
+
+[ -f "$API_FILE" ] || die "Missing file: $API_FILE"
+[ -f "$AUTH_FILE" ] || die "Missing file: $AUTH_FILE"
+
+CUR_V_API=$(read_json_version "$API_FILE")
+CUR_V_AUTH=$(read_json_version "$AUTH_FILE")
+
+CUR_V="$CUR_V_API"
+[ -z "$CUR_V" ] && CUR_V="$CUR_V_AUTH"
+[ -z "$CUR_V" ] && CUR_V="0.0.0"
+
+gum style "Current version (API): $(gum style --bold $CUR_V_API)"
+gum style "Current version (Auth): $(gum style --bold $CUR_V_AUTH)"
+
+if [ "$MODE" = "frontend" ]; then
+  run "Version number is learnt! It is $CUR_V. Now, go to frontend folder" "cd ../portal-frontend"
+fi
 
 # Auto-stash if needed
 ensure_clean_worktree
@@ -469,23 +500,6 @@ if branch_exists_local develop; then
 else
   die "Branch not found: develop"
 fi
-
-### ---------- Read current version ----------
-API_FILE="./MyFolder1/appsettings.json"
-AUTH_FILE="./MyFolder2/appsettings.json"
-
-[ -f "$API_FILE" ] || die "Missing file: $API_FILE"
-[ -f "$AUTH_FILE" ] || die "Missing file: $AUTH_FILE"
-
-CUR_V_API=$(read_json_version "$API_FILE")
-CUR_V_AUTH=$(read_json_version "$AUTH_FILE")
-
-CUR_V="$CUR_V_API"
-[ -z "$CUR_V" ] && CUR_V="$CUR_V_AUTH"
-[ -z "$CUR_V" ] && CUR_V="0.0.0"
-
-gum style "Current version (API): $(gum style --bold $CUR_V_API)"
-gum style "Current version (Auth): $(gum style --bold $CUR_V_AUTH)"
 
 ### ---------- Ask for new version ----------
 style_title "Choose new version"
