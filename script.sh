@@ -132,29 +132,6 @@ pull_or_internet_hint() {
   ui_success "Pulled '$br' successfully"
 }
 
-# pull_or_internet_hint() {
-#   # Try git pull; on failure, hint about Internet/VPN
-#   local br="$1"
-#   echo "Checking Internet/VPN connectivity"
-#   echo "Running: git pull --ff-only"
-#   if ! gum spin --spinner dot --title "Pull: $br" -- git pull --ff-only; then
-#     echo -e "\n$(gum style --italic --foreground 1 'No internet or VPN? 🙄')\n"
-#     exit 1
-#   fi
-# }
-
-# ensure_clean_worktree() {
-#   if ! git diff-index --quiet HEAD --; then
-#     gum style --foreground 214 "You have uncommitted changes in the working tree."
-#     if gum confirm "Stash changes temporarily?"; then
-#       run "Stash" git stash push -u -m "auto-stash by wp-release.sh"
-#     else
-#       die "Please commit/stash your changes and retry."
-#     fi
-#   fi
-#   echo "Verified clean worktree"
-# }
-
 ensure_clean_worktree() {
   if ! git diff-index --quiet HEAD --; then
     ui_warn "You have uncommitted changes in the working tree."
