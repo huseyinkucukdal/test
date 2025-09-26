@@ -30,66 +30,183 @@ ICON_ERR="🛑"
 ICON_RUN="🚀"
 
 
-# ---------- Animation (confetti/fireworks) ----------
-ANIMATE="${ANIMATE:-1}"   # ANIMATE=0 ile kapat
+# # ---------- Animation (confetti/fireworks) ----------
+# ANIMATE="${ANIMATE:-1}"   # ANIMATE=0 ile kapat
 
-# Basit ve taşınabilir zaman ölçer (ms)
-_now_ms() { echo "$(( $(date +%s) * 1000 ))"; }  # macOS uyumlu (yaklaşık ms)
+# # Basit ve taşınabilir zaman ölçer (ms)
+# _now_ms() { echo "$(( $(date +%s) * 1000 ))"; }  # macOS uyumlu (yaklaşık ms)
 
-release_animation() {
+# release_animation() {
+#   # TTY değilse ya da ANIMATE=0 ise atla
+#   if [ "$ANIMATE" != "1" ] || [ ! -t 1 ]; then return 0; fi
+
+#   # Ekranı alternatif ekrana al (varsa), imleci gizle
+#   tput smcup 2>/dev/null || true
+#   tput civis 2>/dev/null || true
+#   trap 'tput cnorm 2>/dev/null || true; tput rmcup 2>/dev/null || true' EXIT
+
+#   local cols rows
+#   cols=$(tput cols 2>/dev/null || echo 80)
+#   rows=$(tput lines 2>/dev/null || echo 24)
+
+#   # Renk paleti ve karakterler
+#   local colors=(196 202 208 214 118 51 39 201 207 93 75 45 33 141 129)
+#   local glyphs=("*" "+" "·" "•" "★" "✦" "✧" "✸" "✺" "❉" "❋")
+
+#   # Süre ve yoğunluk
+#   local duration_ms=1600
+#   local step_ms=40                 # ~25 fps
+#   local step_s; step_s=$(printf '0.%03d' "$step_ms")  # 40ms -> "0.040"
+#   local bursts=30
+
+#   # Hafif fade efekti için düşük yoğunluk
+#   printf "\033[2m"
+
+#   # Çizim döngüsü
+#   local start_ms now_ms elapsed i x y c g
+#   start_ms=$(_now_ms)
+#   while :; do
+#     for ((i=0; i<bursts; i++)); do
+#       x=$(( RANDOM % (cols>2?cols-2:1) + 1 ))
+#       y=$(( RANDOM % (rows>3?rows-3:1) + 2 ))
+#       c=${colors[$RANDOM % ${#colors[@]}]}
+#       g=${glyphs[$RANDOM % ${#glyphs[@]}]}
+#       printf "\033[%d;%dH\033[38;5;%dm%s" "$y" "$x" "$c" "$g"
+#     done
+
+#     # Alt satırda ufak “akış” izi
+#     printf "\033[%d;1H\033[0m" "$rows"
+#     sleep "$step_s"
+
+#     now_ms=$(_now_ms)
+#     elapsed=$(( now_ms - start_ms ))
+#     [ "$elapsed" -ge "$duration_ms" ] && break
+#   done
+
+#   # Temizle ve geri dön
+#   printf "\033[0m"
+#   # smcup kullandığımız için rmcup eski ekranı geri getirir
+#   # Ekstra: tput rmcup EXIT trap'inde zaten çağrılıyor.
+# }
+
+# ---------- Fancy 2s Celebration Animation (v2, robust) ----------
+ANIMATE="${ANIMATE:-1}"   # export ANIMATE=0 ile kapat
+
+celebrate_fancy_2s() {
   # TTY değilse ya da ANIMATE=0 ise atla
   if [ "$ANIMATE" != "1" ] || [ ! -t 1 ]; then return 0; fi
 
-  # Ekranı alternatif ekrana al (varsa), imleci gizle
-  tput smcup 2>/dev/null || true
+  # İmleci gizle; çıkışta geri getir
   tput civis 2>/dev/null || true
-  trap 'tput cnorm 2>/dev/null || true; tput rmcup 2>/dev/null || true' EXIT
+  trap 'tput cnorm 2>/dev/null || true' EXIT
 
-  local cols rows
+  local cols rows cx cy
   cols=$(tput cols 2>/dev/null || echo 80)
   rows=$(tput lines 2>/dev/null || echo 24)
+  cx=$(( cols / 2 ))
+  cy=$(( rows / 2 ))
 
-  # Renk paleti ve karakterler
-  local colors=(196 202 208 214 118 51 39 201 207 93 75 45 33 141 129)
-  local glyphs=("*" "+" "·" "•" "★" "✦" "✧" "✸" "✺" "❉" "❋")
+  # Renk ve karakter setleri
+  local RESET="\033[0m"
+  local PAL=(196 202 208 214 220 118 51 39 201 207 93 75 45 33 141 129)
+  local GOLD=220 WHITE=231 OK=35
+  local SPARKS=("·" "•" "*" "✦" "✶" "✷" "✸" "✺")
+  local CONFETTI=("◆" "●" "■" "▲" "★" "✶" "✹" "+")
 
-  # Süre ve yoğunluk
-  local duration_ms=1600
-  local step_ms=40                 # ~25 fps
-  local step_s; step_s=$(printf '0.%03d' "$step_ms")  # 40ms -> "0.040"
-  local bursts=30
+  local fps=25 total_ms=2000 total_frames=$(( total_ms * fps / 1000 ))
+  local phase1=$(( total_frames * 30 / 100 ))   # ~0.6s: burst
+  local phase2=$(( total_frames * 40 / 100 ))   # ~0.8s: confetti
+  local phase3=$(( total_frames - phase1 - phase2 )) # ~0.6s: banner
 
-  # Hafif fade efekti için düşük yoğunluk
-  printf "\033[2m"
+  color() { printf "\033[38;5;%sm%s\033[0m" "$1" "$2"; }
+  draw()  { # y x text
+    printf "\033[%d;%dH%s" "$1" "$2" "$3"
+  }
 
-  # Çizim döngüsü
-  local start_ms now_ms elapsed i x y c g
-  start_ms=$(_now_ms)
-  while :; do
-    for ((i=0; i<bursts; i++)); do
-      x=$(( RANDOM % (cols>2?cols-2:1) + 1 ))
-      y=$(( RANDOM % (rows>3?rows-3:1) + 2 ))
-      c=${colors[$RANDOM % ${#colors[@]}]}
-      g=${glyphs[$RANDOM % ${#glyphs[@]}]}
-      printf "\033[%d;%dH\033[38;5;%dm%s" "$y" "$x" "$c" "$g"
+  burst_frame() { # frame_index
+    local k="$1" r steps=16 i x y ch col
+    r=$(( 1 + (k * 6 / (phase1>0?phase1:1)) ))   # yarıçap 1..6
+    for ((i=0;i<steps;i++)); do
+      case "$i" in
+        0)  x=$r; y=0 ;;
+        1)  x=$(( r-1 )); y=-1 ;;
+        2)  x=$(( r-1 )); y=-2 ;;
+        3)  x=$(( r-2 )); y=-3 ;;
+        4)  x=0; y=-$r ;;
+        5)  x=-2; y=-3 ;;
+        6)  x=-1; y=-2 ;;
+        7)  x=-1; y=-1 ;;
+        8)  x=-$r; y=0 ;;
+        9)  x=-1; y=1 ;;
+        10) x=-1; y=2 ;;
+        11) x=-2; y=3 ;;
+        12) x=0; y=$r ;;
+        13) x=2; y=3 ;;
+        14) x=1; y=2 ;;
+        15) x=1; y=1 ;;
+      esac
+      ch="${SPARKS[$(( (k+i) % ${#SPARKS[@]} ))]}"
+      col="${PAL[$(( (k+i) % ${#PAL[@]} ))]}"
+      draw $(( cy + y )) $(( cx + x )) "$(color "$col" "$ch")"
     done
+    draw "$cy" "$cx" "$(color $GOLD '✹')"
+  }
 
-    # Alt satırda ufak “akış” izi
-    printf "\033[%d;1H\033[0m" "$rows"
-    sleep "$step_s"
+  confetti_frame() { # frame_index
+    local k="$1" n=120 i x y ch col
+    for ((i=0;i<n;i++)); do
+      x=$(( (RANDOM % (cols-4)) + 2 ))
+      y=$(( (RANDOM % (rows-4)) + 2 ))
+      ch="${CONFETTI[$(( RANDOM % ${#CONFETTI[@]} ))]}"
+      col="${PAL[$(( (k+i*3) % ${#PAL[@]} ))]}"
+      draw "$y" "$x" "$(color "$col" "$ch")"
+    done
+  }
 
-    now_ms=$(_now_ms)
-    elapsed=$(( now_ms - start_ms ))
-    [ "$elapsed" -ge "$duration_ms" ] && break
+  banner_frame() { # frame_index
+    local k="$1" msg="RELEASE  COMPLETE" col bcol width left top
+    case $(( k % 4 )) in
+      0|2) col=$OK;   bcol=$GOLD ;;
+      1|3) col=$GOLD; bcol=$WHITE ;;
+    esac
+    width=$(( ${#msg} + 4 ))
+    left=$(( (cols - width - 2) / 2 ))
+    [ $left -lt 1 ] && left=1
+    top=$(( cy - 1 ))
+
+    local border_top border_mid border_bot
+    border_top="$(printf "\033[38;5;%sm┏%s┓\033[0m" "$bcol" "$(printf '━%.0s' $(seq 1 $width))")"
+    border_mid="$(printf "\033[38;5;%sm┃  \033[1m\033[38;5;%sm%s\033[0m\033[38;5;%sm  ┃\033[0m" "$bcol" "$col" "$msg" "$bcol")"
+    border_bot="$(printf "\033[38;5;%sm┗%s┛\033[0m" "$bcol" "$(printf '━%.0s' $(seq 1 $width))")"
+
+    draw "$top"       "$left" "$border_top"
+    draw $((top + 1)) "$left" "$border_mid"
+    draw $((top + 2)) "$left" "$border_bot"
+  }
+
+  local f
+  for ((f=0; f<total_frames; f++)); do
+    # tam ekran temizle + home
+    printf "\033[2J\033[H"
+
+    if [ $f -lt $phase1 ]; then
+      burst_frame "$f"
+    elif [ $f -lt $(( phase1 + phase2 )) ]; then
+      burst_frame "$phase1"
+      confetti_frame "$f"
+    else
+      confetti_frame "$f"
+      banner_frame $(( f - phase1 - phase2 ))
+    fi
+
+    # 25 FPS
+    sleep 0.040
   done
 
-  # Temizle ve geri dön
-  printf "\033[0m"
-  # smcup kullandığımız için rmcup eski ekranı geri getirir
-  # Ekstra: tput rmcup EXIT trap'inde zaten çağrılıyor.
+  # Finali kısa süre gösterip temizle
+  sleep 0.15
+  printf "$RESET\033[2J\033[H"
 }
-
-
 
 
 ui_hr() {
@@ -424,7 +541,7 @@ fi
 # Push master
 run "Push master" git push
 
-release_animation
+celebrate_fancy_2s
 
 ui_banner "✅  Release Complete"
 gum join \
