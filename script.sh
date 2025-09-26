@@ -32,39 +32,40 @@ ICON_RUN="🚀"
 
 # ---------- Animation (confetti/fireworks) ----------
 ANIMATE="${ANIMATE:-1}"   # ANIMATE=0 ile kapat
+
+# Basit ve taşınabilir zaman ölçer (ms)
+_now_ms() { echo "$(( $(date +%s) * 1000 ))"; }  # macOS uyumlu (yaklaşık ms)
+
 release_animation() {
   # TTY değilse ya da ANIMATE=0 ise atla
-  if [ "$ANIMATE" != "1" ] || [ ! -t 1 ]; then return 0; end
+  if [ "$ANIMATE" != "1" ] || [ ! -t 1 ]; then return 0; fi
 
-  # Cursor gizle, çıkışta geri getir
+  # Ekranı alternatif ekrana al (varsa), imleci gizle
+  tput smcup 2>/dev/null || true
   tput civis 2>/dev/null || true
-  trap 'tput cnorm 2>/dev/null || true' EXIT
+  trap 'tput cnorm 2>/dev/null || true; tput rmcup 2>/dev/null || true' EXIT
 
   local cols rows
   cols=$(tput cols 2>/dev/null || echo 80)
   rows=$(tput lines 2>/dev/null || echo 24)
 
-  # Basit renk paleti ve karakterler
+  # Renk paleti ve karakterler
   local colors=(196 202 208 214 118 51 39 201 207 93 75 45 33 141 129)
   local glyphs=("*" "+" "·" "•" "★" "✦" "✧" "✸" "✺" "❉" "❋")
 
   # Süre ve yoğunluk
   local duration_ms=1600
-  local step_ms=40          # 25 fps civarı
+  local step_ms=40                 # ~25 fps
+  local step_s; step_s=$(printf '0.%03d' "$step_ms")  # 40ms -> "0.040"
   local bursts=30
 
-  # Ekranı tamponla (isteğe bağlı)
-  # tput smcup 2>/dev/null || true
-
-  # Arka planı hafif soluklaştır
+  # Hafif fade efekti için düşük yoğunluk
   printf "\033[2m"
 
   # Çizim döngüsü
-  local start_ts now elapsed i x y c g
-  start_ts=$(($(date +%s%3N 2>/dev/null || echo 0)))
+  local start_ms now_ms elapsed i x y c g
+  start_ms=$(_now_ms)
   while :; do
-    # ekranı kısmen temizlemeden sadece iz bırakma efekti:
-    # hafif fade için ANSI "erase line" kullanıp çizelim
     for ((i=0; i<bursts; i++)); do
       x=$(( RANDOM % (cols>2?cols-2:1) + 1 ))
       y=$(( RANDOM % (rows>3?rows-3:1) + 2 ))
@@ -72,21 +73,22 @@ release_animation() {
       g=${glyphs[$RANDOM % ${#glyphs[@]}]}
       printf "\033[%d;%dH\033[38;5;%dm%s" "$y" "$x" "$c" "$g"
     done
-    # alt kısımda küçük bir akış çizgisi
-    printf "\033[%d;1H\033[0m" "$rows"
-    sleep 0.$((step_ms/10)) 2>/dev/null || sleep 0.04
 
-    now=$(($(date +%s%3N 2>/dev/null || echo $start_ts)))
-    elapsed=$(( now - start_ts ))
+    # Alt satırda ufak “akış” izi
+    printf "\033[%d;1H\033[0m" "$rows"
+    sleep "$step_s"
+
+    now_ms=$(_now_ms)
+    elapsed=$(( now_ms - start_ms ))
     [ "$elapsed" -ge "$duration_ms" ] && break
   done
 
-  # Temizle ve imleci geri getir
-  printf "\033[0m\033[2J\033[H"
-  # tput rmcup 2>/dev/null || true
-  tput cnorm 2>/dev/null || true
-  trap - EXIT
+  # Temizle ve geri dön
+  printf "\033[0m"
+  # smcup kullandığımız için rmcup eski ekranı geri getirir
+  # Ekstra: tput rmcup EXIT trap'inde zaten çağrılıyor.
 }
+
 
 
 
