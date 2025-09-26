@@ -29,6 +29,69 @@ ICON_WARN="⚠️"
 ICON_ERR="🛑"
 ICON_RUN="🚀"
 
+
+# ---------- Animation (confetti/fireworks) ----------
+ANIMATE="${ANIMATE:-1}"   # ANIMATE=0 ile kapat
+
+# Basit ve taşınabilir zaman ölçer (ms)
+_now_ms() { echo "$(( $(date +%s) * 1000 ))"; }  # macOS uyumlu (yaklaşık ms)
+
+release_animation() {
+  # TTY değilse ya da ANIMATE=0 ise atla
+  if [ "$ANIMATE" != "1" ] || [ ! -t 1 ]; then return 0; fi
+
+  # Ekranı alternatif ekrana al (varsa), imleci gizle
+  tput smcup 2>/dev/null || true
+  tput civis 2>/dev/null || true
+  trap 'tput cnorm 2>/dev/null || true; tput rmcup 2>/dev/null || true' EXIT
+
+  local cols rows
+  cols=$(tput cols 2>/dev/null || echo 80)
+  rows=$(tput lines 2>/dev/null || echo 24)
+
+  # Renk paleti ve karakterler
+  local colors=(196 202 208 214 118 51 39 201 207 93 75 45 33 141 129)
+  local glyphs=("*" "+" "·" "•" "★" "✦" "✧" "✸" "✺" "❉" "❋")
+
+  # Süre ve yoğunluk
+  local duration_ms=1600
+  local step_ms=40                 # ~25 fps
+  local step_s; step_s=$(printf '0.%03d' "$step_ms")  # 40ms -> "0.040"
+  local bursts=30
+
+  # Hafif fade efekti için düşük yoğunluk
+  printf "\033[2m"
+
+  # Çizim döngüsü
+  local start_ms now_ms elapsed i x y c g
+  start_ms=$(_now_ms)
+  while :; do
+    for ((i=0; i<bursts; i++)); do
+      x=$(( RANDOM % (cols>2?cols-2:1) + 1 ))
+      y=$(( RANDOM % (rows>3?rows-3:1) + 2 ))
+      c=${colors[$RANDOM % ${#colors[@]}]}
+      g=${glyphs[$RANDOM % ${#glyphs[@]}]}
+      printf "\033[%d;%dH\033[38;5;%dm%s" "$y" "$x" "$c" "$g"
+    done
+
+    # Alt satırda ufak “akış” izi
+    printf "\033[%d;1H\033[0m" "$rows"
+    sleep "$step_s"
+
+    now_ms=$(_now_ms)
+    elapsed=$(( now_ms - start_ms ))
+    [ "$elapsed" -ge "$duration_ms" ] && break
+  done
+
+  # Temizle ve geri dön
+  printf "\033[0m"
+  # smcup kullandığımız için rmcup eski ekranı geri getirir
+  # Ekstra: tput rmcup EXIT trap'inde zaten çağrılıyor.
+}
+
+
+
+
 ui_hr() {
   gum style --foreground "$CLR_DIM" "$(printf '—%.0s' {1..60})"
 }
@@ -189,7 +252,7 @@ write_json_version() {
     fi
   fi
 
-  echo "Wrote version $2 to $1"
+  echo "Set version $2 to $1"
 }
 
 release_branch_exists() {
@@ -361,13 +424,14 @@ fi
 # Push master
 run "Push master" git push
 
-# style_title "✅ Done"
+release_animation
+
 ui_banner "✅  Release Complete"
 gum join \
   --horizontal \
   "$(gum style --border normal --padding '0 2' --border-foreground $CLR_OK "Release branch: $(gum style --bold $REL_BRANCH)")" \
   "$(gum style --border normal --padding '0 2' --border-foreground $CLR_PRIMARY "New version: $(gum style --bold $NEW_V)")"
 
-ui_note "Tip: create a tag and push if you use annotated tags in your workflow."
+ui_note "Tip: Check Jenkins: https://jenkins.afiniti.com/job/Engr_Portal_Backend_Service"
 ui_hr
 
