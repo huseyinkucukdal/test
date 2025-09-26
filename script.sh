@@ -428,7 +428,7 @@ need_cmd gum
 # style_title "WP Release Assistant"
 # ui_banner "WP Release Assistant"
 ui_banner_big "WP Release Assistant" small normal
-ui_note   "Prereqs: gum, jq (optional). $(gum style --foreground $CLR_DIM 'Sed/grep fallback active if jq is missing.')"
+ui_note   "Select a repo please"
 ui_hr
 
 ### ---------- Repo choice ----------
