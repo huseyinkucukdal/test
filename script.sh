@@ -500,9 +500,20 @@ if [ "$MODE" = "backend" ]; then
   enter_dir "$BACKEND_DIR"
 fi
 
+# Fetch remotes
+run "Git fetch" git fetch --all
+
+# Auto-stash if needed
+ensure_clean_worktree
+
 if [ "$MODE" = "frontend" ]; then
   enter_dir "$BACKEND_DIR"
+  run "Checkout master" "git checkout master"
+  pull_or_internet_hint "master"
 fi
+
+# Fetch remotes
+run "Git fetch" git fetch --all
 
 ### ---------- Read current version ----------
 API_FILE="$BACKEND_DIR/Afiniti.Work.API/appsettings.json"
