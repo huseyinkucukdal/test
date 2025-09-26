@@ -462,7 +462,7 @@ build_backend_or_fail() {
   style_title "Backend: build verification (Release)"
   need_cmd dotnet
   run "dotnet restore" dotnet restore
-  run "Build Work.API" dotnet build $BACKEND_DIR/Afiniti.Work.API/Afiniti.Work.API.csproj -c Releease /consoleloggerparameters:NoSummary /p:GenerateFullPaths=true
+  run "Build Work.API" dotnet build $BACKEND_DIR/Afiniti.Work.API/Afiniti.Work.API.csproj -c Release /consoleloggerparameters:NoSummary /p:GenerateFullPaths=true
   run "Build AuthAPI" dotnet build $BACKEND_DIR/Afiniti.Work.AuthAPI/Afiniti.Work.AuthAPI.csproj -c Release /consoleloggerparameters:NoSummary /p:GenerateFullPaths=true
   ui_success "Backend build passed"
 }
