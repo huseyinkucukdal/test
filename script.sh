@@ -435,10 +435,10 @@ ui_hr
 CHOICE=$(gum choose --header "Which repo?" "WP Backend" "WP Frontend")
 [ -z "$CHOICE" ] && die "You must make a selection."
 
-MODE = "backend"
+MODE="backend"
 
 if [ "$CHOICE" = "WP Frontend" ]; then
-  MODE = "frontend"
+  MODE="frontend"
 fi
 
 ui_note "Selected mode: $MODE"
