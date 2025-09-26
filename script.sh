@@ -94,38 +94,32 @@ release_animation() {
 celebrate_2s() {
   [ "$ANIMATE" = "0" ] && return 0
 
-  # 1) çalışan konfeti
   release_animation
 
-  # 2) 2.0s banner pulse (daha yavaş)
   local cols rows cx cy; cols=$(tput cols 2>/dev/null || echo 80); rows=$(tput lines 2>/dev/null || echo 24)
   cx=$(( cols / 2 )); cy=$(( rows / 2 ))
-  local msg="$1 RELEASE  COMPLETE"
+  local msg="$1 RELEASE COMPLETED"
   local width=$(( ${#msg} + 4 ))
   local left=$(( (cols - width - 2) / 2 )); [ $left -lt 1 ] && left=1
   local top=$(( cy - 1 ))
 
   local GOLD=220 WHITE=231 OK=35
   local duration_s=3
-  local fps=30                   # ↓ 12 FPS (daha yavaş akış)
-  local frame_sleep=0.083        # ≈1/12 s
+  local fps=50            
+  local frame_sleep=0.083  
   local frames=$(( duration_s * fps ))
 
   for ((i=0; i<frames; i++)); do
-    # 0.5 sn'de bir renk döngüsü (6 karede bir)
     if [ $(( (i / 6) % 2 )) -eq 0 ]; then
       col=$OK;   bcol=$GOLD
     else
       col=$GOLD; bcol=$WHITE
     fi
 
-    # border çizgisi
     local line; line="$(printf '%*s' "$width" '' | tr ' ' '━')"
 
-    # temiz + home
     printf "\033[2J\033[H"
 
-    # çerçeve ve metin (daha yavaş pulse)
     printf "\033[%d;%dH\033[38;5;%sm┏%s┓\033[0m" "$top" "$left" "$bcol" "$line"
     printf "\033[%d;%dH\033[38;5;%sm┃  \033[1m\033[38;5;%sm%s\033[0m\033[38;5;%sm  ┃\033[0m" \
            $((top+1)) "$left" "$bcol" "$col" "$msg" "$bcol"
@@ -134,9 +128,115 @@ celebrate_2s() {
     sleep "$frame_sleep"
   done
 
-  # temizle (trap rmcup ile alt ekrandan çıkılacak)
   printf "\033[2J\033[H"
 }
+
+# ---------- Huge/Medium/Small ASCII banner (portable) ----------
+# Usage:
+#   ui_banner_big "WP Release Assistant" medium loose
+#   ui_banner_big "WP Release Assistant" medium 2
+#   ui_banner_big "WP Release Assistant" small
+ui_banner_big() {
+  local title="$1"
+  local size="${2:-big}"                 # big | medium | small
+  local spacing="${3:-normal}"           # tight | normal | loose | <number>
+  local up; up="$(printf '%s' "$title" | tr '[:lower:]' '[:upper:]')"
+  local cols; cols=$(tput cols 2>/dev/null || echo 120)
+
+  # --- Rendering prefs by size ---
+  local figlet_font="big" pad="1 4" border="double" fill="█"
+  case "$size" in
+    medium) figlet_font="standard"; pad="1 3"; border="normal"; fill="█" ;;
+    small)  figlet_font="small";    pad="0 2"; border="normal"; fill="♡" ;;
+  esac
+
+  # --- Spacing ---
+  local SEP="  "        # default
+  case "$spacing" in
+    tight)  SEP="";;
+    normal) SEP=" ";;
+    loose)  SEP="   ";;
+    ''|*[!0-9]*) : ;;                       
+    *) SEP="$(printf '%*s' "$spacing" "")" ;;
+  esac
+
+  # FIGLET/BANNER
+  if [ "$size" = "big" ] && command -v banner >/dev/null 2>&1; then
+    banner "$up" \
+      | gum style --bold --border "$border" --padding "$pad" \
+                  --border-foreground "${CLR_PRIMARY:-212}" --align center
+    printf "\n"; return
+  fi
+
+  if command -v figlet >/dev/null 2>&1; then
+    local kerning_opt=""
+    [ "$spacing" != "tight" ] && kerning_opt="-k"
+    figlet -w "$cols" -f "$figlet_font" $kerning_opt "$up" \
+      | gum style --bold --border "$border" --padding "$pad" \
+                  --border-foreground "${CLR_PRIMARY:-212}" --align center
+    printf "\n"; return
+  fi
+
+  # Fallback: AWK block letters (7 rows)
+  printf '%s\n' "$up" | awk -v SEP="$SEP" -v FILL="$fill" '
+    BEGIN{
+      f[" 1"]="       "; f[" 2"]="       "; f[" 3"]="       ";
+      f[" 4"]="       "; f[" 5"]="       "; f[" 6"]="       "; f[" 7"]="       ";
+
+      f["A1"]="  ###  "; f["A2"]=" #   # "; f["A3"]="#     #";
+      f["A4"]="#-----#"; f["A5"]="#     #"; f["A6"]="#     #"; f["A7"]="#     #";
+
+      f["E1"]="#######"; f["E2"]="#      "; f["E3"]="#      ";
+      f["E4"]="#####  "; f["E5"]="#      "; f["E6"]="#      "; f["E7"]="#######";
+
+      # --- FIX: I artık 7 sütun ---
+      f["I1"]="#######"; f["I2"]="   #   "; f["I3"]="   #   ";
+      f["I4"]="   #   "; f["I5"]="   #   "; f["I6"]="   #   "; f["I7"]="#######";
+
+      f["L1"]="#      "; f["L2"]="#      "; f["L3"]="#      ";
+      f["L4"]="#      "; f["L5"]="#      "; f["L6"]="#      "; f["L7"]="#######";
+
+      f["N1"]="#     #"; f["N2"]="##    #"; f["N3"]="# #   #";
+      f["N4"]="#  #  #"; f["N5"]="#   # #"; f["N6"]="#    ##"; f["N7"]="#     #";
+
+      f["P1"]="###### "; f["P2"]="#     #"; f["P3"]="#     #";
+      f["P4"]="###### "; f["P5"]="#      "; f["P6"]="#      "; f["P7"]="#      ";
+
+      f["R1"]="###### "; f["R2"]="#     #"; f["R3"]="#     #";
+      f["R4"]="###### "; f["R5"]="#   #  "; f["R6"]="#    # "; f["R7"]="#     #";
+
+      f["S1"]=" ##### "; f["S2"]="#     #"; f["S3"]="#      ";
+      f["S4"]=" ##### "; f["S5"]="      #"; f["S6"]="#     #"; f["S7"]=" ##### ";
+
+      f["T1"]="#######"; f["T2"]="   #   "; f["T3"]="   #   ";
+      f["T4"]="   #   "; f["T5"]="   #   "; f["T6"]="   #   "; f["T7"]="   #   ";
+
+      f["W1"]="#     #"; f["W2"]="#     #"; f["W3"]="#  #  #";
+      f["W4"]="#  #  #"; f["W5"]="#  #  #"; f["W6"]="# # # #"; f["W7"]=" ## ## ";
+
+      # doldurma karakterleri
+      for (k in f) { g=f[k]; gsub(/#/,FILL,g); gsub(/-/,FILL,g); f[k]=g }
+    }
+    {
+      text=$0
+      for (row=1; row<=7; row++) {
+        line=""
+        for (i=1; i<=length(text); i++) {
+          ch=substr(text,i,1); key=ch row
+          if (!(key in f)) key=" " row
+          line = line f[key] SEP
+        }
+        sub(/[ ]+$/, "", line)   # --- FIX: sağdaki boşlukları kırp ---
+        print line
+      }
+    }' \
+  | gum style --bold --border "$border" --padding "$pad" \
+      --border-foreground "${CLR_PRIMARY:-212}" --align center
+
+
+  printf "\n"
+}
+
 
 ui_hr() {
   gum style --foreground "$CLR_DIM" "$(printf '—%.0s' {1..60})"
@@ -161,10 +261,8 @@ ui_warn()   { gum style --foreground "$CLR_WARN"  "$ICON_WARN  $*"; }
 ui_error()  { gum style --foreground "$CLR_ERR"   "$ICON_ERR  $*"; }
 ui_success(){ gum style --foreground "$CLR_OK" --bold "$ICON_OK  $*"; }
 
-# Eski style_title yerine daha “fancy” bir bölüm başlığı
 style_title() { ui_section "$1"; }
 
-# Komut çalıştıran helper: spinner + outcome rozeti
 run() {
   local title="$1"; shift
   if gum spin --spinner "$SPINNER" --title "$title" -- "$@"; then
@@ -191,8 +289,6 @@ branch_ahead_count() {
 }
 
 ensure_synced_or_push() {
-  # Bulunduğun dal için push'lanmamış commit var mı kontrol eder.
-  # Upstream yoksa kurmayı ve push’lamayı teklif eder.
   local br="$1"
   local cur
   cur="$(git rev-parse --abbrev-ref HEAD)"
@@ -330,7 +426,8 @@ need_cmd gum
 [ -d .git ] || die "You must run this script at the repo root ('.git' not found)."
 
 # style_title "WP Release Assistant"
-ui_banner "WP Release Assistant"
+# ui_banner "WP Release Assistant"
+ui_banner_big "WP Release Assistant" small normal
 ui_note   "Prereqs: gum, jq (optional). $(gum style --foreground $CLR_DIM 'Sed/grep fallback active if jq is missing.')"
 ui_hr
 
