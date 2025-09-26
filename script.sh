@@ -13,17 +13,59 @@ need_cmd() {
   echo "Checked: '$1' is installed"
 }
 
-style_title() {
-  gum style --bold --border normal --padding "1 2" --margin "1 0" --border-foreground 212 "$1"
+### ---------- UI / Theme ----------
+# Renk paleti (Gum 256-color)
+CLR_PRIMARY=212      # Pembe-lila (başlık)
+CLR_INFO=39          # Mavi (bilgi)
+CLR_WARN=214         # Sarı (uyarı)
+CLR_ERR=1            # Kırmızı (hata)
+CLR_OK=35            # Yeşil-mor arası (başarı)
+CLR_DIM=244          # Soluk gri (ikincil metin)
+SPINNER="dot"
+
+ICON_OK="✅"
+ICON_INFO="ℹ️"
+ICON_WARN="⚠️"
+ICON_ERR="🛑"
+ICON_RUN="🚀"
+
+ui_hr() {
+  gum style --foreground "$CLR_DIM" "$(printf '—%.0s' {1..60})"
 }
 
+ui_banner() {
+  local title="$1"
+  gum style \
+    --border double --margin "1 0" --padding "1 3" \
+    --border-foreground "$CLR_PRIMARY" --bold "$title"
+}
+
+ui_section() {
+  local title="$1"
+  gum style \
+    --border normal --margin "1 0" --padding "0 2" \
+    --border-foreground "$CLR_PRIMARY" --bold "$title"
+}
+
+ui_note()   { gum style --foreground "$CLR_INFO"  "$ICON_INFO  $*"; }
+ui_warn()   { gum style --foreground "$CLR_WARN"  "$ICON_WARN  $*"; }
+ui_error()  { gum style --foreground "$CLR_ERR"   "$ICON_ERR  $*"; }
+ui_success(){ gum style --foreground "$CLR_OK" --bold "$ICON_OK  $*"; }
+
+# Eski style_title yerine daha “fancy” bir bölüm başlığı
+style_title() { ui_section "$1"; }
+
+# Komut çalıştıran helper: spinner + outcome rozeti
 run() {
-  # Run a command with gum spinner; fail with a clear message
   local title="$1"; shift
-  if ! gum spin --spinner dot --title "$title" -- "$@"; then
-    die "Failed at step: '$title'."
+  if gum spin --spinner "$SPINNER" --title "$title" -- "$@"; then
+    gum style --foreground "$CLR_OK"  "$ICON_OK  $title"
+    gum style --foreground "$CLR_DIM" "     ↳ $*"
+  else
+    ui_error "Failed at step: '$title'"
+    gum style --foreground "$CLR_DIM" "     ↳ $*"
+    exit 1
   fi
-  echo "Running: $@"
 }
 
 branch_has_upstream() {
@@ -51,51 +93,81 @@ ensure_synced_or_push() {
   fi
 
   if ! branch_has_upstream "$br"; then
-    gum style --foreground 214 "Branch '$br' has no upstream set."
+    ui_warn "Branch '$br' has no upstream set."
     if gum confirm "Set upstream and push '$br' to origin?"; then
       run "Push '$br' (set upstream)" git push -u origin "$br"
     else
-      die "Upstream not set. Cannot continue safely."
+      ui_error "Upstream not set. Cannot continue safely."
+      exit 1
     fi
   else
     local ahead
     ahead="$(branch_ahead_count "$br")"
     if [ "${ahead:-0}" -gt 0 ]; then
-      gum style --foreground 214 --bold "Branch '$br' has $ahead unpushed commit(s)."
-
+      gum style --foreground "$CLR_WARN" --bold "$ICON_WARN  Branch '$br' has $ahead unpushed commit(s)."
       git log --oneline "$br@{u}..$br" | sed 's/^/  • /'
       echo
       if gum confirm "Push '$br' to origin now?"; then
         run "Push '$br'" git push
       else
-        die "Unpushed commits on '$br'. Aborting."
+        ui_error "Unpushed commits on '$br'. Aborting."
+        exit 1
       fi
+    else
+      ui_success "Branch '$br' is up-to-date with upstream"
     fi
   fi
 }
 
 pull_or_internet_hint() {
-  # Try git pull; on failure, hint about Internet/VPN
   local br="$1"
-  echo "Checking Internet/VPN connectivity"
-  echo "Running: git pull --ff-only"
-  if ! gum spin --spinner dot --title "Pull: $br" -- git pull --ff-only; then
-    echo -e "\n$(gum style --italic --foreground 1 'No internet or VPN? 🙄')\n"
+  ui_note "Checking Internet/VPN connectivity for '$br'…"
+  if ! gum spin --spinner "$SPINNER" --title "Pull: $br" -- git pull --ff-only; then
+    echo
+    ui_error "Pull failed. Possible Internet/VPN issue."
+    gum style --italic --foreground "$CLR_WARN" "Hint: Is your VPN connected?"
+    echo
     exit 1
   fi
+  ui_success "Pulled '$br' successfully"
 }
+
+# pull_or_internet_hint() {
+#   # Try git pull; on failure, hint about Internet/VPN
+#   local br="$1"
+#   echo "Checking Internet/VPN connectivity"
+#   echo "Running: git pull --ff-only"
+#   if ! gum spin --spinner dot --title "Pull: $br" -- git pull --ff-only; then
+#     echo -e "\n$(gum style --italic --foreground 1 'No internet or VPN? 🙄')\n"
+#     exit 1
+#   fi
+# }
+
+# ensure_clean_worktree() {
+#   if ! git diff-index --quiet HEAD --; then
+#     gum style --foreground 214 "You have uncommitted changes in the working tree."
+#     if gum confirm "Stash changes temporarily?"; then
+#       run "Stash" git stash push -u -m "auto-stash by wp-release.sh"
+#     else
+#       die "Please commit/stash your changes and retry."
+#     fi
+#   fi
+#   echo "Verified clean worktree"
+# }
 
 ensure_clean_worktree() {
   if ! git diff-index --quiet HEAD --; then
-    gum style --foreground 214 "You have uncommitted changes in the working tree."
+    ui_warn "You have uncommitted changes in the working tree."
     if gum confirm "Stash changes temporarily?"; then
       run "Stash" git stash push -u -m "auto-stash by wp-release.sh"
     else
-      die "Please commit/stash your changes and retry."
+      ui_error "Please commit/stash your changes and retry."
+      exit 1
     fi
   fi
-  echo "Verified clean worktree"
+  ui_success "Verified clean worktree"
 }
+
 
 branch_exists_local()  { 
   echo "check if local branch $1 exists"
@@ -171,7 +243,10 @@ need_cmd gum
 
 [ -d .git ] || die "You must run this script at the repo root ('.git' not found)."
 
-style_title "WP Release Assistant"
+# style_title "WP Release Assistant"
+ui_banner "WP Release Assistant"
+ui_note   "Prereqs: gum, jq (optional). $(gum style --foreground $CLR_DIM 'Sed/grep fallback active if jq is missing.')"
+ui_hr
 
 ### ---------- Repo choice ----------
 CHOICE=$(gum choose --header "Which repo?" "WP Backend" "WP Frontend")
@@ -248,7 +323,9 @@ while true; do
   break
 done
 
-gum style --foreground 36 "New version: $(gum style --bold $NEW_V)"
+gum style --foreground "$CLR_OK" "New version: $(gum style --bold $NEW_V)"
+ui_hr
+
 
 ### ---------- Update version on develop ----------
 style_title "Update version (develop)"
@@ -307,6 +384,13 @@ fi
 # Push master
 run "Push master" git push
 
-style_title "✅ Done"
-gum style --foreground 35 --bold "Release branch: $REL_BRANCH"
-gum style --foreground 35 --bold "New version: $NEW_V"
+# style_title "✅ Done"
+ui_banner "✅  Release Complete"
+gum join \
+  --horizontal \
+  "$(gum style --border normal --padding '0 2' --border-foreground $CLR_OK "Release branch: $(gum style --bold $REL_BRANCH)")" \
+  "$(gum style --border normal --padding '0 2' --border-foreground $CLR_PRIMARY "New version: $(gum style --bold $NEW_V)")"
+
+ui_note "Tip: create a tag and push if you use annotated tags in your workflow."
+ui_hr
+
